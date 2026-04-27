@@ -11,6 +11,9 @@ def send(client):
         message = input("-")
         message = message.encode('utf-8')
         client.send(message)
+        print(f"\nMessage envoyé : {message}")
+
+        
 
 def receive(client):
     while True:
