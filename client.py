@@ -34,15 +34,15 @@ client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 try:
     client.connect((Host, Port))
     print(f"Connecté au serveur {Host}")
-    ma_privee = crypto.generer_clef_privee()
-    ma_publique = crypto.calculer_publique(ma_privee)
+    ma_privee = crypto.generer_clef()
+    ma_publique = crypto.publique(ma_privee)
 
     client.send(str(ma_publique).encode())
 
     data = client.recv(1024).decode()
     publique_serveur = int(data)
 
-    SECRET_DH = crypto.calculer_commun(ma_privee, publique_serveur)
+    SECRET_DH = crypto.commun(ma_privee, publique_serveur)
     print("Secret DH établi avec succès.")
 
 except Exception as e:

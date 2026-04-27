@@ -36,12 +36,12 @@ client, adresse = serveur.accept()
 print(f"Connexion établie avec {adresse}")
 
 try:
-    ma_privee = crypto.generer_clef_privee()
-    ma_publique = crypto.calculer_publique(ma_privee)
+    ma_privee = crypto.generer_clef()
+    ma_publique = crypto.publique(ma_privee)
     data = client.recv(1024).decode()
     publique_client = int(data)
     client.send(str(ma_publique).encode())
-    SECRET_DH = crypto.calculer_commun(ma_privee, publique_client)
+    SECRET_DH = crypto.commun(ma_privee, publique_client)
 except:
     client.close()
     serveur.close()
