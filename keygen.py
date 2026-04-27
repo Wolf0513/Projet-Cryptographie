@@ -1,5 +1,5 @@
 import numpy as np
-import random as r 
+import random 
 
 def generer_matrices_clefs(secret_commun, longueur_message):
     random.seed(secret_commun)
