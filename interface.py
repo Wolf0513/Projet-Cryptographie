@@ -1,5 +1,6 @@
 import customtkinter
 import json
+import hashlib  
 from crypto import chiffrement
 from keygen import gen_clef
 
@@ -21,17 +22,14 @@ def lancer_interface(client_socket):
     app.geometry("600x500")
     app.title("Alpachat")
 
-    
     app.grid_columnconfigure(0, weight=1)
     app.grid_rowconfigure(0, weight=1)
 
-    
     dialog = customtkinter.CTkInputDialog(text="Entrez votre pseudo :", title="Connexion")
     input_pseudo = dialog.get_input()
     if input_pseudo:
         mon_pseudo = input_pseudo
 
-    
     zone_chat = customtkinter.CTkTextbox(app)
     zone_chat.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
     
@@ -40,18 +38,18 @@ def lancer_interface(client_socket):
     def envoyer_message():
         texte = champ_saisie.get()
         if texte != "":
-            
             message_complet = f"{mon_pseudo} : {texte}"
             
+            hash_message = hashlib.sha256(message_complet.encode('utf-8')).hexdigest()
             
             key1, key2 = gen_clef(len(message_complet))
             chiffre = chiffrement(message_complet, key1, key2)
             
-            
             paquet = {
                 "ch2": chiffre.tolist(), 
                 "key1": key1.tolist(), 
-                "key2": key2.tolist()
+                "key2": key2.tolist(),
+                "hash": hash_message 
             }
             
             client_socket.send(json.dumps(paquet).encode('utf-8'))

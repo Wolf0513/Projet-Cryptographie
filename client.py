@@ -3,6 +3,7 @@ from threading import Thread
 import json
 from crypto import dechiffrement
 from interface import lancer_interface, afficher_message
+import hashlib
 
 Host = "10.1.40.74"
 Port = 6390
