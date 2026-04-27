@@ -1,13 +1,11 @@
 import numpy as np
 import random as r 
 
-def gen_clef(len_mess):
-    col = len_mess//2 + 1
-
-    key1 = np.array([[r.randint(0,1000)for i in range(col)],
-                     [r.randint(0,1000)for i in range(col)]])
+def generer_matrices_clefs(secret_commun, longueur_message):
+    random.seed(secret_commun)
+    taille = (longueur_message // 2) + (longueur_message % 2)
     
-    key2 = np.zeros_like(key1)
-    for i in range(key1.shape[0]):
-        key2[i] =np.roll(key1[i], -i)
-    return key1,key2
+    key1 = [[random.randint(0, 255) for _ in range(taille)] for _ in range(2)]
+    key2 = [[random.randint(0, 255) for _ in range(taille)] for _ in range(2)]
+    
+    return np.array(key1), np.array(key2)

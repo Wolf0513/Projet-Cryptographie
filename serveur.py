@@ -18,13 +18,13 @@ def receive(client):
                 print("Connexion perdue")
                 break
 
-            # Décodage du JSON reçu
+            
             paquet = json.loads(requete_client.decode('utf-8'))
             
-            # Déchiffrement avec tes fonctions de crypto.py
+            
             message_dechiffre = dechiffrement(paquet['ch2'], paquet['key1'], paquet['key2'])
             
-            # ON ENVOIE VERS L'INTERFACE
+            
             afficher_message(message_dechiffre)
 
         except Exception as e:

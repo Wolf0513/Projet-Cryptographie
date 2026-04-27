@@ -1,7 +1,7 @@
 import customtkinter
 import json
-from crypto import chiffrement
-from keygen import gen_clef
+import crypto
+import keygen
 
 zone_chat = None
 mon_pseudo = "Anonyme"
@@ -11,7 +11,7 @@ def afficher_message(texte):
         zone_chat.insert("end", texte + "\n")
         zone_chat.see("end")
 
-def lancer_interface(client_socket):
+def lancer_interface(client_socket, SECRET_DH):
     global zone_chat, mon_pseudo
 
     customtkinter.set_appearance_mode("system")
@@ -44,14 +44,12 @@ def lancer_interface(client_socket):
             message_complet = f"{mon_pseudo} : {texte}"
             
             
-            key1, key2 = gen_clef(len(message_complet))
-            chiffre = chiffrement(message_complet, key1, key2)
+            key1, key2 = keygen.generer_matrices_clefs(SECRET_DH, len(message_complet))
+            chiffre = crypto.chiffrement(message_complet, key1, key2)
             
             
             paquet = {
                 "ch2": chiffre.tolist(), 
-                "key1": key1.tolist(), 
-                "key2": key2.tolist()
             }
             
             client_socket.send(json.dumps(paquet).encode('utf-8'))
