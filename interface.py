@@ -1,4 +1,7 @@
 import customtkinter
+import json
+from crypto import chiffrement
+from keygen import gen_clef
 
 zone_chat = None
 
@@ -24,8 +27,19 @@ def lancer_interface(client_socket):
     def envoyer_message():
         texte = champ_saisie.get()
         if texte != "":
-            message_encode = texte.encode('utf-8')
-            client_socket.send(message_encode)
+            key1, key2 = gen_clef(len(texte))
+            chiffre = chiffrement(texte, key1, key2)
+            
+ 
+            paquet = {
+                "ch2": chiffre.tolist(), 
+                "key1": key1.tolist(), 
+                "key2": key2.tolist()
+            }
+            
+
+            client_socket.send(json.dumps(paquet).encode('utf-8'))
+            
             afficher_message(f"Moi : {texte}") 
             champ_saisie.delete(0, 'end')
 

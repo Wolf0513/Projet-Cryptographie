@@ -14,14 +14,11 @@ def receive(client_socket):
             if not requete:
                 print("Connexion perdue")
                 break
-
             paquet = json.loads(requete.decode('utf-8'))
             message_dechiffre = dechiffrement(paquet['ch2'], paquet['key1'], paquet['key2'])
-            
             afficher_message(f"Serveur : {message_dechiffre}")
-
         except Exception as e:
-            print(f"Erreur réception : {e}")
+            print(f"Erreur de réception : {e}")
             break
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
