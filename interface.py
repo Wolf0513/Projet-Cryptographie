@@ -47,6 +47,7 @@ def lancer_interface(client_socket, SECRET_DH):
             
             paquet = {
                 "ch2": chiffre.tolist(), 
+                "hash": hash_message
             }
             
             client_socket.send(json.dumps(paquet).encode('utf-8'))

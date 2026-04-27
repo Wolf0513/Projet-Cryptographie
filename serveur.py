@@ -2,6 +2,7 @@ import socket
 from threading import Thread
 import json
 import crypto
+import keygen
 from interface import lancer_interface, afficher_message
 
 Host = "10.1.40.74"
@@ -18,7 +19,7 @@ def receive(client_socket):
                 paquet = json.loads(requete.decode('utf-8'))
                 chiffre = paquet['ch2']
                 longueur = len(chiffre[0]) * 2
-                k1, k2 = crypto.generer_matrices_clefs(SECRET_DH, longueur)
+                k1, k2 = keygen.generer_matrices_clefs(SECRET_DH, longueur)
                 message = crypto.dechiffrement(chiffre, k1, k2)
                 afficher_message(message)
             else:
@@ -30,7 +31,9 @@ serveur = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 serveur.bind((Host, Port))
 serveur.listen(1)
 
+print(f"Serveur en écoute sur {Host}:{Port}...")
 client, adresse = serveur.accept()
+print(f"Connexion établie avec {adresse}")
 
 try:
     ma_privee = crypto.generer_clef_privee()

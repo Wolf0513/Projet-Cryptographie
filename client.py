@@ -2,6 +2,7 @@ import socket
 from threading import Thread
 import json
 import crypto
+import keygen
 from interface import lancer_interface, afficher_message
 
 Host = "10.1.40.74"
@@ -20,7 +21,7 @@ def receive(client_socket):
             paquet = json.loads(requete.decode('utf-8'))
             chiffre = paquet['ch2']
             longueur_message = len(chiffre[0]) * 2
-            k1, k2 = crypto.generer_matrices_clefs(SECRET_DH, longueur_message)
+            k1, k2 = keygen.generer_matrices_clefs(SECRET_DH, longueur_message)
             message_dechiffre = crypto.dechiffrement(chiffre, k1, k2)
             afficher_message(message_dechiffre)
 
