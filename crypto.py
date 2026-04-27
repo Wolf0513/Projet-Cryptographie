@@ -2,13 +2,13 @@ import numpy as np
 import random
 
 p = 967
-b = 248
+g = 248
 
 def generer_clef():
     return random.randint(1, p-1)
 
 def publique(privee):
-    return pow(b, privee, p)
+    return pow(g, privee, p)
 
 def commun(privee_locale, publique_distante):
     return pow(publique_distante, privee_locale, p)
