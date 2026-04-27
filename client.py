@@ -11,6 +11,7 @@ SECRET_DH = None
 condition = True
 
 def receive(client_socket):
+    global condition
     while condition:
         try:
             requete = client_socket.recv(8192)
