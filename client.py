@@ -1,37 +1,42 @@
-import socket 
+import socket
 from threading import Thread
-from crypto import chiffrement
-from keygen import gen_clef
 import json
-Host = "10.40.10.74"
+from crypto import dechiffrement
+from interface import lancer_interface, afficher_message
+
+Host = "10.1.40.74"
 Port = 6390
 
-
-def send(socket):
+def receive(client_socket):
     while True:
-        message = input("-")
-        key1,key2 = gen_clef(len(message))
-        chiffre = chiffrement(message,key1,key2)
-        paquet = {"ch2":chiffre.tolist(), "key1": key1.tolist(), "key2": key2.tolist()}
-        socket.send(json.dumps(paquet).encode('utf-8'))
+        try:
+            requete = client_socket.recv(8192)
+            if not requete:
+                print("Connexion perdue")
+                break
 
+            paquet = json.loads(requete.decode('utf-8'))
+            message_dechiffre = dechiffrement(paquet['ch2'], paquet['key1'], paquet['key2'])
+            
+            afficher_message(f"Serveur : {message_dechiffre}")
 
+        except Exception as e:
+            print(f"Erreur réception : {e}")
+            break
 
-def receive(socket):
-    while True:
-        requete_server = socket.recv(500)
-        requete_server = requete_server.decode('utf-8')
-        print(requete_server)
-#Création du Socket *
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+try:
+    client.connect((Host, Port))
+    print(f"Connecté au serveur {Host}")
+except Exception as e:
+    print(f"Erreur de connexion : {e}")
+    exit()
 
-socket.connect((Host,Port))
-
-#permet d'envoyer plusieurs message à la suite sans attendre la réponse de l'autre
-envoi = Thread(target = send, args = [socket])
-reception = Thread(target = receive, args = [socket])
-
-envoi.start()
+reception = Thread(target=receive, args=[client])
+reception.daemon = True
 reception.start()
 
+lancer_interface(client)
+
+client.close()
