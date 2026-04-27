@@ -3,7 +3,7 @@ from threading import Thread
 from crypto import chiffrement
 from keygen import gen_clef
 import json
-Host = "10.40.10.74"
+Host = "10.1.40.74"
 Port = 6390
 
 
