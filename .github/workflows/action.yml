@@ -21,10 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Si tu as un fichier requirements.txt, décommente la ligne suivante :
-        # pip install -r requirements.txt
-        # Pour la crypto, tu auras peut-être besoin de :
-        # pip install cryptography
+        pip install -r requirements.txt
 
     - name: Lint with flake8
       run: |
