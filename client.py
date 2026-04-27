@@ -16,7 +16,7 @@ def receive(client_socket):
                 break
             paquet = json.loads(requete.decode('utf-8'))
             message_dechiffre = dechiffrement(paquet['ch2'], paquet['key1'], paquet['key2'])
-            afficher_message(f"Serveur : {message_dechiffre}")
+            afficher_message(message_dechiffre)
         except Exception as e:
             print(f"Erreur de réception : {e}")
             break

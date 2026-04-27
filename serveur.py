@@ -25,7 +25,7 @@ def receive(client):
             message_dechiffre = dechiffrement(paquet['ch2'], paquet['key1'], paquet['key2'])
             
             # ON ENVOIE VERS L'INTERFACE
-            afficher_message(f"Client : {message_dechiffre}")
+            afficher_message(message_dechiffre)
 
         except Exception as e:
             print(f"Erreur de réception : {e}")
