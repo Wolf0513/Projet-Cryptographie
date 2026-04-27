@@ -4,11 +4,12 @@ from crypto import chiffrement
 from keygen import gen_clef
 
 zone_chat = None
-mon_pseudo = "Anonyme" # Pseudo par défaut
+mon_pseudo = "Anonyme"
 
 def afficher_message(texte):
     if zone_chat is not None:
         zone_chat.insert("end", texte + "\n")
+        zone_chat.see("end")
 
 def lancer_interface(client_socket):
     global zone_chat, mon_pseudo
@@ -20,26 +21,32 @@ def lancer_interface(client_socket):
     app.geometry("600x500")
     app.title("Alpachat")
 
-    # Demander le pseudo à l'ouverture
-    dialog = customtkinter.CTkInputDialog(text="Entrez votre pseudo :", title="Connexion")
-    entree_pseudo = dialog.get_input()
-    if entree_pseudo:
-        mon_pseudo = entree_pseudo
+    
+    app.grid_columnconfigure(0, weight=1)
+    app.grid_rowconfigure(0, weight=1)
 
-    zone_chat = customtkinter.CTkTextbox(app, width=550, height=350)
-    zone_chat.pack(pady=20)
+    
+    dialog = customtkinter.CTkInputDialog(text="Entrez votre pseudo :", title="Connexion")
+    input_pseudo = dialog.get_input()
+    if input_pseudo:
+        mon_pseudo = input_pseudo
+
+    
+    zone_chat = customtkinter.CTkTextbox(app)
+    zone_chat.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
     
     afficher_message(f"--- Bienvenue {mon_pseudo} ! ---")
 
     def envoyer_message():
         texte = champ_saisie.get()
         if texte != "":
-            # On prépare le texte avec le pseudo pour l'autre
+            
             message_complet = f"{mon_pseudo} : {texte}"
             
-            # Chiffrement du message complet
+            
             key1, key2 = gen_clef(len(message_complet))
             chiffre = chiffrement(message_complet, key1, key2)
+            
             
             paquet = {
                 "ch2": chiffre.tolist(), 
@@ -49,14 +56,19 @@ def lancer_interface(client_socket):
             
             client_socket.send(json.dumps(paquet).encode('utf-8'))
             
-            # On l'affiche aussi chez nous
             afficher_message(f"Moi : {texte}") 
             champ_saisie.delete(0, 'end')
 
-    champ_saisie = customtkinter.CTkEntry(app, width=400, placeholder_text="Message...")
-    champ_saisie.pack(side="left", padx=20, pady=20)
+    frame_bas = customtkinter.CTkFrame(app, fg_color="transparent")
+    frame_bas.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+    frame_bas.grid_columnconfigure(0, weight=1)
 
-    bouton_envoyer = customtkinter.CTkButton(app, text="Envoyer", command=envoyer_message)
-    bouton_envoyer.pack(side="right", padx=20, pady=20)
+    champ_saisie = customtkinter.CTkEntry(frame_bas, placeholder_text="Votre message...")
+    champ_saisie.grid(row=0, column=0, padx=(0, 10), sticky="ew")
+
+    champ_saisie.bind("<Return>", lambda event: envoyer_message())
+
+    bouton_envoyer = customtkinter.CTkButton(frame_bas, text="Envoyer", command=envoyer_message)
+    bouton_envoyer.grid(row=0, column=1)
 
     app.mainloop()
