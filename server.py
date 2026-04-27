@@ -1,16 +1,19 @@
 import socket 
 from threading import Thread
-from crypto import dechiffrement
+from crypto import dechiffrement 
 import json
 
+Host = "10.1.40.74"
+Port = 6390 
+
 def send(client):
-    while True :
+    while True:
         message = input("-")
         message = message.encode('utf-8')
         client.send(message)
 
 def receive(client):
-    while True :
+    while True:
         try:
             requete_client = client.recv(8192)
             if not requete_client: 
@@ -19,33 +22,34 @@ def receive(client):
 
             paquet = json.loads(requete_client.decode('utf-8'))
             message_dechiffre = dechiffrement(paquet['ch2'], paquet['key1'], paquet['key2'])
-            print(message_dechiffre)
+            print(f"\nMessage reçu : {message_dechiffre}")
 
         except Exception as e:
             print(f"Error occurred during reception : {e}")
             break
 
-Host = "192.168.1.38"
-Port = 6390
 
-#Création du Socket 
-socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+serveur = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-socket.bind((Host,Port))
-socket.listen(1)
 
-#Le script s'arrête jusqu'a une connection
-client, ip = socket.accept()
-print(f"Client ip : {ip} is connected")
+serveur.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-#permet d'envoyer plusieurs message à la suite sans attendre la réponse de l'autre
-envoi = Thread(target = send, args = [client] )
-reception = Thread(target = receive, args = [client])
+serveur.bind((Host, Port))
+serveur.listen(1)
+print(f"Le serveur écoute en attente d'une connexion sur {Host}:{Port}...")
+
+
+client, addresseClient = serveur.accept()
+print(f"\nConnexion établie avec {addresseClient}")
+
+envoi = Thread(target=send, args=[client])
+reception = Thread(target=receive, args=[client])
 
 envoi.start()
 reception.start()
 
-reception.join() # fait a ce que le client et le socket s arrete que quand la def reception a fini
+reception.join() 
 
+print("Fermeture des connexions...")
 client.close()
-socket.close()
+serveur.close()

@@ -10,5 +10,4 @@ def gen_clef(len_mess):
     key2 = np.zeros_like(key1)
     for i in range(key1.shape[0]):
         key2[i] =np.roll(key1[i], -i)
-        
     return key1,key2
