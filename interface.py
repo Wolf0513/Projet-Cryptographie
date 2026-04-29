@@ -3,6 +3,7 @@ import json
 import hmac
 import hashlib
 import crypto
+import numpy as np
 from tkinter import messagebox
 
 zone_chat = None
@@ -43,15 +44,15 @@ def lancer_interface(client_socket, SECRET_DH):
         if texte.strip() != "":
             message_complet = f"{mon_pseudo} : {texte}"
             
-            # 1. Chiffrement
-            key1, key2 = crypto.generer_matrices_clefs(SECRET_DH, len(message_complet))
+            key1, key2 = crypto.generer_matrices_clefs(SECRET_DH)
             chiffre = crypto.chiffrement(message_complet, key1, key2)
             
-            # 2. Signature HMAC
+            # Correction : Conversion NumPy pour le HMAC
+            chiffre_np = np.array(chiffre, dtype=np.int32)
             secret_bytes = str(SECRET_DH).encode()
-            signature = hmac.new(secret_bytes, chiffre.tobytes(), hashlib.sha256).hexdigest()
+            signature = hmac.new(secret_bytes, chiffre_np.tobytes(), hashlib.sha256).hexdigest()
             
-            paquet = {"ch2": chiffre.tolist(), "hmac": signature}
+            paquet = {"ch2": chiffre, "hmac": signature}
             
             try:
                 client_socket.send(json.dumps(paquet).encode('utf-8'))

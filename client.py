@@ -27,8 +27,7 @@ def receive(client_socket):
                 hmac_local = hmac.new(secret_bytes, chiffre_np.tobytes(), hashlib.sha256).hexdigest()
                 
                 if hmac.compare_digest(hmac_local, hmac_recu):
-                    longueur = len(chiffre_liste[0]) * 2
-                    k1, k2 = crypto.generer_matrices_clefs(SECRET_DH, longueur)
+                    k1, k2 = crypto.generer_matrices_clefs(SECRET_DH)
                     message = crypto.dechiffrement(chiffre_liste, k1, k2)
                     interface.afficher_message(message)
                 else:

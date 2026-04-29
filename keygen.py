@@ -1,11 +1,15 @@
 import numpy as np
+import hashlib
 
-
-def generer_matrices_clefs(secret_commun, longueur_message):
-    random.seed(secret_commun)
-    taille = (longueur_message // 2) + (longueur_message % 2)
+def generer_matrices_clefs(secret_commun):
+    hash = hashlib.sha256(str(secret_commun).encode()).digest()
     
-    key1 = [[random.randint(0, 255) for _ in range(taille)] for _ in range(2)]
-    key2 = [[random.randint(0, 255) for _ in range(taille)] for _ in range(2)]
+    # 2. On sépare en deux blocs de 16 octets
+    partie1 = list(hash[:16])
+    partie2 = list(hash[16:])
     
-    return np.array(key1), np.array(key2)
+    # 3. On transforme chaque bloc en matrice 4x4
+    k1 = np.array(partie1, dtype=np.int32).reshape(4, 4)
+    k2 = np.array(partie2, dtype=np.int32).reshape(4, 4)
+    
+    return k1, k2
