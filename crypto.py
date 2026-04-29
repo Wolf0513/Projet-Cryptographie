@@ -328,21 +328,27 @@ def chiffrement(message, k1, k2, k3, k4):
 
     resultat = list(iv)  # L'IV est transmis en clair en tête du paquet
 
+    # iv_courant est mis à jour à chaque bloc (vrai CBC) :
+    # le bloc chiffré précédent devient l'IV du bloc suivant.
+    # Ainsi deux blocs clairs identiques produisent des blocs chiffrés différents.
+    iv_courant = iv_matrix
+
     for i in range(0, len(donnees), 16):
         bloc = np.array(donnees[i:i + 16], dtype=np.int32).reshape(4, 4)
 
         # [DEBUG] Afficher chaque bloc clair avant transformation
         # print(f"[DEBUG chiffrement] bloc {i // 16} clair :\n{bloc}")
 
-        bloc = substituer_octets(bloc)        # SubBytes
-        bloc = diffuser_lignes(bloc)          # ShiftRows
-        bloc = melanger_colonnes(bloc)        # MixColumns
-        chiffre = bloc ^ k_combinee ^ iv_matrix  # AddRoundKey + XOR IV
+        bloc = substituer_octets(bloc)           # SubBytes
+        bloc = diffuser_lignes(bloc)             # ShiftRows
+        bloc = melanger_colonnes(bloc)           # MixColumns
+        chiffre = bloc ^ k_combinee ^ iv_courant # AddRoundKey + XOR IV courant
 
         # [DEBUG] Afficher chaque bloc après chiffrement complet
         # print(f"[DEBUG chiffrement] bloc {i // 16} chiffré :\n{chiffre}")
 
         resultat.extend(chiffre.flatten().tolist())
+        iv_courant = chiffre  # CBC : le bloc chiffré devient le nouvel IV
 
     # [DEBUG] Afficher la taille totale du paquet chiffré (IV + blocs)
     # print(f"[DEBUG chiffrement] taille paquet final : {len(resultat)} octets")
@@ -393,21 +399,26 @@ def dechiffrement(liste_chiffree, k1, k2, k3, k4):
     # (ex : supprimer 0x00 au milieu d'une séquence UTF-8 corromprait le texte).
     octets_bruts = bytearray()
 
+    # iv_courant suit le même enchaînement que lors du chiffrement :
+    # chaque bloc chiffré est utilisé comme IV pour déchiffrer le bloc suivant.
+    iv_courant = iv_matrix
+
     for i in range(0, len(donnees), 16):
         bloc = donnees[i:i + 16].reshape(4, 4)
 
         # [DEBUG] Afficher chaque bloc chiffré avant transformation inverse
         # print(f"[DEBUG dechiffrement] bloc {i // 16} chiffré :\n{bloc}")
 
-        dechiffre = bloc ^ k_combinee ^ iv_matrix  # Défaire AddRoundKey + XOR IV
-        dechiffre = demeler_colonnes(dechiffre)     # InvMixColumns
-        dechiffre = rassembler_lignes(dechiffre)    # InvShiftRows
-        dechiffre = restaurer_octets(dechiffre)     # InvSubBytes
+        dechiffre = bloc ^ k_combinee ^ iv_courant  # Défaire AddRoundKey + XOR IV courant
+        dechiffre = demeler_colonnes(dechiffre)      # InvMixColumns
+        dechiffre = rassembler_lignes(dechiffre)     # InvShiftRows
+        dechiffre = restaurer_octets(dechiffre)      # InvSubBytes
 
         # [DEBUG] Afficher chaque bloc après déchiffrement complet
         # print(f"[DEBUG dechiffrement] bloc {i // 16} déchiffré :\n{dechiffre}")
 
         octets_bruts.extend(int(v) for v in dechiffre.flatten())
+        iv_courant = bloc  # CBC : le bloc chiffré (avant déchiffrement) devient le nouvel IV
 
     # Suppression du padding nul en fin de message, puis décodage UTF-8
     # rstrip(b'\x00') retire les octets nuls de padding sans toucher au contenu
