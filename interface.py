@@ -8,6 +8,11 @@ Responsabilités :
   - Permettre à l'utilisateur de saisir et d'envoyer des messages.
   - Chiffrer les messages sortants et les signer via HMAC avant envoi.
 
+Format des messages dans le chat :
+  Les messages ont la forme "pseudo : texte".
+  afficher_message() sépare le pseudo du contenu pour afficher
+  le pseudo en petite étiquette au-dessus de la bulle (style Instagram).
+
 ⚠️  afficher_message() est appelée depuis le thread de réception (receive() dans
     client.py). CustomTkinter n'est pas thread-safe : il faudrait utiliser
     app.after(0, ...) pour déléguer la mise à jour au thread principal.
@@ -29,12 +34,15 @@ app = None         # Fenêtre principale CustomTkinter
 
 def afficher_message(texte, auteur="autre"):
     """
-    Ajoute une bulle de message dans la zone de chat.
+    Ajoute une bulle de message dans la zone de chat, style Instagram :
+      - Pour les messages reçus ("autre") : le pseudo de l'expéditeur est affiché
+        en petite étiquette grise au-dessus de la bulle.
+      - Pour "moi" : pas d'étiquette (on sait que c'est soi).
+      - Pour "systeme" : message centré sans étiquette.
 
-    Le style de la bulle varie selon l'auteur :
-      - "moi"     : alignée à droite, fond bleu
-      - "systeme" : centrée, fond gris foncé (messages d'état)
-      - "autre"   : alignée à gauche, fond gris (messages reçus)
+    Le texte reçu a la forme "pseudo : contenu".
+    La fonction extrait le pseudo et le contenu via le premier " : ".
+    Si le format est inattendu, tout le texte est affiché sans étiquette.
 
     ⚠️  Cette fonction peut être appelée depuis un thread non-UI (receive()).
         Tkinter n'étant pas thread-safe, des crashs aléatoires sont possibles.
@@ -42,40 +50,77 @@ def afficher_message(texte, auteur="autre"):
 
     Paramètres
     ----------
-    texte  : str — contenu du message à afficher
+    texte  : str — message complet au format "pseudo : contenu"
     auteur : str — "moi", "systeme" ou "autre" (valeur par défaut)
     """
     # [DEBUG] Tracer chaque appel à afficher_message avec son auteur
     # print(f"[DEBUG afficher_message] auteur='{auteur}' | texte='{texte}'")
 
-    if zone_chat is not None:
-        # Définition du style de la bulle selon l'auteur
-        if auteur == "moi":
-            anchor = "e"
-            fg_color = "#1f6aa5"
-            txt_color = "white"
-        elif auteur == "systeme":
-            anchor = "center"
-            fg_color = "#4a4a4a"
-            txt_color = "#aaaaaa"
-        else:
-            anchor = "w"
-            fg_color = "#3d3d3d"
-            txt_color = "white"
-
-        # Création de la bulle (frame arrondie + label texte)
-        msg_frame = customtkinter.CTkFrame(zone_chat, fg_color=fg_color, corner_radius=10)
-        msg_frame.pack(padx=10, pady=5, anchor=anchor)
-
-        label = customtkinter.CTkLabel(msg_frame, text=texte, text_color=txt_color, wraplength=400, justify="left")
-        label.pack(padx=10, pady=5)
-
-        # Défilement automatique vers le bas après ajout d'un message
-        zone_chat._parent_canvas.yview_moveto(1.0)
-    else:
+    if zone_chat is None:
         # [DEBUG] Avertir si zone_chat n'est pas encore initialisée
         # print("[DEBUG afficher_message] AVERTISSEMENT : zone_chat est None, message ignoré")
-        pass
+        return
+
+    # ── Extraction du pseudo et du contenu ─────────────────────────────────
+    # Le format attendu est "pseudo : contenu".
+    # On coupe uniquement sur le premier " : " pour ne pas tronquer un message
+    # qui contiendrait lui-même " : " (ex : "Alice : il est 14 : 30").
+    if auteur == "autre" and " : " in texte:
+        pseudo_expediteur, contenu = texte.split(" : ", 1)
+    else:
+        # Pour "moi" et "systeme", on garde le texte brut sans découpage
+        pseudo_expediteur = None
+        contenu = texte
+
+    # [DEBUG] Afficher le pseudo extrait et le contenu isolé
+    # print(f"[DEBUG afficher_message] pseudo='{pseudo_expediteur}' | contenu='{contenu}'")
+
+    # ── Définition du style de la bulle selon l'auteur ─────────────────────
+    if auteur == "moi":
+        anchor = "e"
+        fg_color = "#1f6aa5"
+        txt_color = "white"
+    elif auteur == "systeme":
+        anchor = "center"
+        fg_color = "#4a4a4a"
+        txt_color = "#aaaaaa"
+    else:
+        anchor = "w"
+        fg_color = "#3d3d3d"
+        txt_color = "white"
+
+    # ── Conteneur extérieur (aligne l'ensemble pseudo + bulle) ─────────────
+    # On utilise un CTkFrame transparent comme colonne d'alignement,
+    # pour que l'étiquette pseudo et la bulle restent groupées du même côté.
+    conteneur = customtkinter.CTkFrame(zone_chat, fg_color="transparent")
+    conteneur.pack(padx=10, pady=(4, 0), anchor=anchor, fill="none")
+
+    # ── Étiquette pseudo (uniquement pour les messages reçus) ───────────────
+    if pseudo_expediteur:
+        label_pseudo = customtkinter.CTkLabel(
+            conteneur,
+            text=pseudo_expediteur,
+            text_color="#888888",       # Gris clair, discret comme sur Instagram
+            font=("Helvetica", 11, "bold"),
+            anchor="w"
+        )
+        label_pseudo.pack(anchor="w", padx=4, pady=(0, 2))
+
+    # ── Bulle de message ────────────────────────────────────────────────────
+    msg_frame = customtkinter.CTkFrame(conteneur, fg_color=fg_color, corner_radius=10)
+    msg_frame.pack(anchor=anchor)
+
+    label_contenu = customtkinter.CTkLabel(
+        msg_frame,
+        text=contenu,
+        text_color=txt_color,
+        wraplength=380,
+        justify="left"
+    )
+    label_contenu.pack(padx=12, pady=8)
+
+    # Défilement automatique vers le bas après ajout d'un message
+    zone_chat._parent_canvas.yview_moveto(1.0)
 
 
 def fermer_interface():
@@ -139,13 +184,15 @@ def lancer_interface(client_socket, SECRET_DH):
         Étapes :
           1. Lecture du texte saisi.
           2. Dérivation des quatre matrices-clefs depuis SECRET_DH.
-          3. Chiffrement du message.
+          3. Chiffrement du message (au format "pseudo : texte").
           4. Calcul du HMAC-SHA256 sur le message chiffré.
           5. Envoi du paquet JSON { "ch2": [...], "hmac": "..." }.
-          6. Affichage local de la bulle "Moi".
+          6. Affichage local de la bulle "Moi" (texte seul, sans étiquette pseudo).
         """
         texte = champ_saisie.get()
         if texte.strip() != "":
+            # Le message complet inclut le pseudo — c'est ce qui sera déchiffré
+            # côté destinataire et affiché avec l'étiquette pseudo
             message_complet = f"{mon_pseudo} : {texte}"
 
             # [DEBUG] Afficher le message complet avant chiffrement
@@ -176,8 +223,10 @@ def lancer_interface(client_socket, SECRET_DH):
                 # [DEBUG] Confirmer l'envoi réseau réussi
                 # print(f"[DEBUG envoyer_message] paquet envoyé avec succès.")
 
-                afficher_message(f"Moi : {texte}", "moi")  # Affichage local
-                champ_saisie.delete(0, 'end')               # Vidage du champ de saisie
+                # Affichage local : on passe uniquement le texte brut (sans "pseudo : ")
+                # car on sait que c'est nous qui parlons — pas besoin d'étiquette
+                afficher_message(f"Moi : {texte}", "moi")
+                champ_saisie.delete(0, 'end')  # Vidage du champ de saisie
             except Exception as e:
                 # [DEBUG] Afficher l'exception réseau pour diagnostiquer
                 # print(f"[DEBUG envoyer_message] erreur envoi : {type(e).__name__} — {e}")
