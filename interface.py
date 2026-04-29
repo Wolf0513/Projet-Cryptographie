@@ -11,30 +11,27 @@ app = None
 
 def afficher_message(texte, auteur="autre"):
     if zone_chat is not None:
-        # Détermine l'alignement et la couleur selon l'auteur
         if auteur == "moi":
             anchor = "e"
-            fg_color = "#1f6aa5" # Bleu
+            fg_color = "#1f6aa5"
             txt_color = "white"
         elif auteur == "systeme":
             anchor = "center"
-            fg_color = "#4a4a4a" # Gris foncé
+            fg_color = "#4a4a4a"
             txt_color = "#aaaaaa"
         else:
             anchor = "w"
-            fg_color = "#3d3d3d" # Gris
+            fg_color = "#3d3d3d"
             txt_color = "white"
 
-        # Création d'une bulle de message (frame)
         msg_frame = customtkinter.CTkFrame(zone_chat, fg_color=fg_color, corner_radius=10)
         msg_frame.pack(padx=10, pady=5, anchor=anchor)
         
         label = customtkinter.CTkLabel(msg_frame, text=texte, text_color=txt_color, wraplength=400, justify="left")
         label.pack(padx=10, pady=5)
         
-        # Scroll automatique vers le bas
-        app.update_idletasks()
-        canvas.yview_moveto(1.0)
+        # Scroll automatique vers le bas (méthode compatible CTkScrollableFrame)
+        zone_chat._parent_canvas.yview_moveto(1.0)
 
 def fermer_interface():
     if app:
@@ -42,35 +39,31 @@ def fermer_interface():
         app.destroy()
 
 def lancer_interface(client_socket, SECRET_DH):
-    global zone_chat, mon_pseudo, app, canvas
+    global zone_chat, mon_pseudo, app
 
     customtkinter.set_appearance_mode("dark")
     app = customtkinter.CTk()
     app.geometry("500x700")
     app.title("Alpachat - Sécurisé")
 
-    # Dialogue pseudo
     dialog = customtkinter.CTkInputDialog(text="Choisissez un pseudo :", title="Connexion")
     res = dialog.get_input()
     mon_pseudo = res if res and res.strip() != "" else "Anonyme"
 
-    # Zone de titre
     titre = customtkinter.CTkLabel(app, text=f"Chat sécurisé : {mon_pseudo}", font=("Helvetica", 16, "bold"))
     titre.pack(pady=10)
 
-    # Conteneur scrollable pour les bulles
-    canvas = customtkinter.CTkScrollableFrame(app, fg_color="#242424", label_text="Conversation")
-    canvas.pack(padx=20, pady=(0, 20), fill="both", expand=True)
-    zone_chat = canvas
+    # Création de la zone de chat scrollable
+    zone_chat = customtkinter.CTkScrollableFrame(app, fg_color="#242424", label_text="Conversation")
+    zone_chat.pack(padx=20, pady=(0, 20), fill="both", expand=True)
 
-    afficher_message(f"Connexion établie avec succès.", "systeme")
+    afficher_message("Connexion établie avec succès.", "systeme")
 
     def envoyer_message():
         texte = champ_saisie.get()
         if texte.strip() != "":
             message_complet = f"{mon_pseudo} : {texte}"
             
-            # Chiffrement et HMAC
             key1, key2 = crypto.generer_matrices_clefs(SECRET_DH)
             chiffre = crypto.chiffrement(message_complet, key1, key2)
             
@@ -85,7 +78,6 @@ def lancer_interface(client_socket, SECRET_DH):
             except:
                 fermer_interface()
 
-    # Barre d'envoi en bas
     frame_bas = customtkinter.CTkFrame(app, fg_color="transparent")
     frame_bas.pack(padx=20, pady=10, fill="x", side="bottom")
 
