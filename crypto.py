@@ -60,11 +60,12 @@ for i in range(256):
 
 # ─────────────────────────────────────────────
 # Matrices MixColumns
-# MATRICE_MIX     : multiplie chaque colonne du bloc (diffusion).
-# MATRICE_INV_MIX : inverse utilisée au déchiffrement.
-# ⚠️  np.linalg.pinv() donne une pseudo-inverse en virgule flottante.
-#     L'inverse exacte dans GF(2⁸) nécessiterait une arithmétique
-#     polynomiale modulo 0x11b — des erreurs d'arrondi peuvent survenir.
+# MATRICE_MIX     : multiplie chaque colonne du bloc au chiffrement.
+# MATRICE_INV_MIX : matrice inverse utilisée au déchiffrement.
+#
+# Les deux matrices opèrent dans GF(2⁸) (corps de Galois), pas dans ℝ.
+# On les stocke comme constantes entières ; la multiplication GF(2⁸)
+# est gérée octet par octet dans gf_mul() et demeler_colonnes().
 # ─────────────────────────────────────────────
 MATRICE_MIX = np.array([
     [2, 3, 1, 1],
@@ -73,7 +74,45 @@ MATRICE_MIX = np.array([
     [3, 1, 1, 2]
 ], dtype=np.int32)
 
-MATRICE_INV_MIX = np.linalg.pinv(MATRICE_MIX)  # ⚠️  Approximation flottante
+# Vraie matrice inverse de MixColumns dans GF(2⁸), valeurs AES standard.
+# Obtenue par inversion algébrique dans GF(2⁸) modulo 0x11b.
+# Contrairement à np.linalg.pinv(), ces coefficients sont exacts.
+MATRICE_INV_MIX = np.array([
+    [14, 11, 13,  9],
+    [ 9, 14, 11, 13],
+    [13,  9, 14, 11],
+    [11, 13,  9, 14]
+], dtype=np.int32)
+
+
+def gf_mul(a, b):
+    """
+    Multiplie deux octets a et b dans GF(2⁸) modulo le polynôme AES 0x11b.
+
+    Algorithme : "multiplication russe des paysans" binaire.
+    Pour chaque bit de b, si le bit est à 1 on XOR le résultat avec a,
+    puis on décale a d'un bit vers la gauche (= multiplication par x dans GF(2⁸)).
+    Si le bit de poids fort de a était à 1 avant le décalage, on XOR avec
+    0x1b (la réduction modulo 0x11b tronquée à 8 bits).
+
+    Paramètres
+    ----------
+    a, b : int — octets dans [0, 255]
+
+    Retourne
+    --------
+    int — résultat dans [0, 255]
+    """
+    resultat = 0
+    for _ in range(8):
+        if b & 1:
+            resultat ^= a          # Ajouter a au résultat si le bit courant de b est 1
+        msb = a & 0x80             # Sauvegarder le bit de poids fort de a
+        a = (a << 1) & 0xFF        # Décalage gauche, on reste sur 8 bits
+        if msb:
+            a ^= 0x1b              # Réduction modulo x⁸ + x⁴ + x³ + x + 1
+        b >>= 1                    # Passer au bit suivant de b
+    return resultat
 
 # [DEBUG] Vérifier que RSBOX est bien l'inverse de SBOX (doit afficher True)
 # print(f"[DEBUG crypto] RSBOX valide : {all(RSBOX[SBOX[i]] == i for i in range(256))}")
@@ -146,25 +185,48 @@ def rassembler_lignes(matrice):
 
 def melanger_colonnes(matrice):
     """
-    MixColumns : multiplie chaque colonne par MATRICE_MIX modulo 256.
-    Renforce la diffusion entre les octets d'une même colonne.
+    MixColumns : multiplie chaque colonne par MATRICE_MIX dans GF(2⁸).
+
+    On utilise gf_mul() pour chaque produit — même arithmétique exacte
+    que demeler_colonnes(), ce qui garantit que les deux opérations
+    sont vraiment inverses l'une de l'autre.
+
+    L'ancienne version (MATRICE_MIX @ matrice) % 256 faisait une
+    multiplication entière ordinaire, incompatible avec l'inverse GF(2⁸).
     """
-    resultat = (MATRICE_MIX @ matrice) % 256
+    resultat = np.zeros_like(matrice)
+    for col in range(4):
+        for ligne in range(4):
+            val = 0
+            for k in range(4):
+                # Multiplication GF(2⁸) et accumulation par XOR
+                val ^= gf_mul(int(MATRICE_MIX[ligne][k]), int(matrice[k][col]))
+            resultat[ligne][col] = val
     # [DEBUG] Afficher la matrice avant/après MixColumns
     # print(f"[DEBUG MixColumns] entrée :\n{matrice}\n→ sortie :\n{resultat}")
     return resultat
 
 def demeler_colonnes(matrice):
     """
-    InvMixColumns : applique MATRICE_INV_MIX puis arrondit au plus proche entier.
-    ⚠️  Approximation flottante — des erreurs d'arrondi peuvent corrompre
-        silencieusement certains blocs lors du déchiffrement.
+    InvMixColumns : multiplie chaque colonne par MATRICE_INV_MIX dans GF(2⁸).
+
+    Contrairement à l'ancienne version (np.linalg.pinv() + arrondi flottant),
+    cette implémentation utilise gf_mul() pour une arithmétique exacte —
+    aucune erreur d'arrondi possible, déchiffrement toujours correct.
+
+    Chaque octet résultant vaut :
+        XOR de gf_mul(MATRICE_INV_MIX[ligne][k], matrice[k][col]) pour k in 0..3
     """
-    res = MATRICE_INV_MIX @ matrice
-    resultat = np.round(res).astype(np.int32) % 256
-    # [DEBUG] Afficher les valeurs flottantes brutes pour détecter les erreurs d'arrondi
-    # print(f"[DEBUG InvMixColumns] valeurs flottantes brutes :\n{np.round(res, 3)}")
-    # print(f"[DEBUG InvMixColumns] après arrondi :\n{resultat}")
+    resultat = np.zeros_like(matrice)
+    for col in range(4):
+        for ligne in range(4):
+            val = 0
+            for k in range(4):
+                # Multiplication GF(2⁸) et accumulation par XOR (addition dans GF(2⁸))
+                val ^= gf_mul(int(MATRICE_INV_MIX[ligne][k]), int(matrice[k][col]))
+            resultat[ligne][col] = val
+    # [DEBUG] Afficher la matrice avant/après InvMixColumns
+    # print(f"[DEBUG InvMixColumns] entrée :\n{matrice}\n→ sortie :\n{resultat}")
     return resultat
 
 
