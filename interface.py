@@ -64,7 +64,7 @@ def lancer_interface(client_socket, SECRET_DH):
     frame_bas = customtkinter.CTkFrame(app, fg_color="transparent")
     frame_bas.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
     champ_saisie = customtkinter.CTkEntry(frame_bas, placeholder_text="Votre message...")
-    champ_saisie.grid(row=0, column=0, padx=(0, 10), sticky="ew")
+    champ_saisie.grid(row=0, column=0, padx=(0, 100), sticky="ew")
     champ_saisie.bind("<Return>", lambda event: envoyer_message())
     
     bouton_envoyer = customtkinter.CTkButton(frame_bas, text="Envoyer", command=envoyer_message)
