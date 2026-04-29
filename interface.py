@@ -225,7 +225,7 @@ def lancer_interface(client_socket, SECRET_DH):
 
                 # Affichage local : on passe uniquement le texte brut (sans "pseudo : ")
                 # car on sait que c'est nous qui parlons — pas besoin d'étiquette
-                afficher_message(f"Moi : {texte}", "moi")
+                afficher_message(texte, "moi")
                 champ_saisie.delete(0, 'end')  # Vidage du champ de saisie
             except Exception as e:
                 # [DEBUG] Afficher l'exception réseau pour diagnostiquer
