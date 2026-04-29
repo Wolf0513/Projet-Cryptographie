@@ -27,7 +27,7 @@ import time
 # ─────────────────────────────────────────────
 # Configuration réseau
 # ─────────────────────────────────────────────
-Host = "10.1.40.74"
+Host = "0.0.0.0"   # Écoute sur toutes les interfaces réseau de la machine
 Port = 6390
 
 # Liste des sockets clients connectés.

@@ -302,8 +302,11 @@ def chiffrement(message, k1, k2, k3, k4):
     # [DEBUG] Afficher l'IV généré en hexadécimal
     # print(f"[DEBUG chiffrement] IV généré : {iv.hex()}")
 
-    # Conversion du message en liste d'entiers ASCII
-    donnees = [ord(c) for c in message]
+    # Encodage UTF-8 du message → chaque octet est un entier dans [0, 255].
+    # On travaille sur les octets, pas sur les caractères, ce qui permet
+    # de gérer correctement tous les caractères Unicode (€, é, ü, 中, etc.)
+    # Un caractère comme € (U+20AC) donne 3 octets : 0xe2 0x82 0xac.
+    donnees = list(message.encode('utf-8'))
 
     # [DEBUG] Afficher la longueur du message avant et après padding
     # print(f"[DEBUG chiffrement] longueur message avant padding : {len(donnees)}")
@@ -383,7 +386,13 @@ def dechiffrement(liste_chiffree, k1, k2, k3, k4):
     # [DEBUG] Afficher la clef combinée recalculée (doit être identique à celle du chiffrement)
     # print(f"[DEBUG dechiffrement] clef combinée recalculée :\n{k_combinee}")
 
-    resultat_texte = ""
+    # Accumulation des octets bruts déchiffrés dans un bytearray
+    # On collecte tous les octets, y compris les zéros de padding,
+    # puis on retire le padding nul à la fin avant de décoder en UTF-8.
+    # Cette approche évite de couper un caractère multi-octets en deux
+    # (ex : supprimer 0x00 au milieu d'une séquence UTF-8 corromprait le texte).
+    octets_bruts = bytearray()
+
     for i in range(0, len(donnees), 16):
         bloc = donnees[i:i + 16].reshape(4, 4)
 
@@ -398,9 +407,11 @@ def dechiffrement(liste_chiffree, k1, k2, k3, k4):
         # [DEBUG] Afficher chaque bloc après déchiffrement complet
         # print(f"[DEBUG dechiffrement] bloc {i // 16} déchiffré :\n{dechiffre}")
 
-        for val in dechiffre.flatten():
-            if val != 0:  # Suppression du padding nul (⚠️  perd les vrais '\x00')
-                resultat_texte += chr(int(val))
+        octets_bruts.extend(int(v) for v in dechiffre.flatten())
+
+    # Suppression du padding nul en fin de message, puis décodage UTF-8
+    # rstrip(b'\x00') retire les octets nuls de padding sans toucher au contenu
+    resultat_texte = octets_bruts.rstrip(b'\x00').decode('utf-8', errors='replace')
 
     # [DEBUG] Afficher le message reconstitué avant retour
     # print(f"[DEBUG dechiffrement] message reconstitué : '{resultat_texte}'")
