@@ -72,13 +72,7 @@ def publique(privee):
 def commun(privee_locale, publique_distante):
     return pow(publique_distante, privee_locale, p)
 
-def generer_matrices_clefs(secret_commun):
-    hash_obj = hashlib.sha256(str(secret_commun).encode()).digest()
-    k1 = np.array(list(hash_obj[:16]), dtype=np.int32).reshape(4, 4)
-    k2 = np.array(list(hash_obj[16:]), dtype=np.int32).reshape(4, 4)
-    k3 = np.left_shift(k1, 2) % 256
-    k4 = np.bitwise_not(k2) % 256
-    return k1, k2, k3, k4
+
 
 def chiffrement(message, k1, k2, k3, k4):
     iv = os.urandom(16)
