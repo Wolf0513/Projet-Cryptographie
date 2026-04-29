@@ -1,11 +1,37 @@
+"""
+crypto.py
+---------
+Fournit toutes les primitives cryptographiques du projet :
+  - Échange de clefs Diffie-Hellman (génération, clef publique, secret partagé)
+  - Chiffrement / déchiffrement par blocs inspiré d'AES
+    (SubBytes, ShiftRows, MixColumns, XOR avec clef combinée et IV)
+
+⚠️  Limitations connues :
+  - p=967 est trop petit pour un usage réel (brutable en <1 ms).
+  - MATRICE_INV_MIX utilise np.linalg.pinv() (flottant) au lieu de
+    l'inverse exacte dans GF(2⁸) → risque d'erreurs d'arrondi.
+  - Le mode CBC n'est pas chaîné (l'IV ne change pas entre les blocs).
+"""
+
 import numpy as np
 import random
 import hashlib
 import os
 
+# ─────────────────────────────────────────────
+# Paramètres Diffie-Hellman
+# p : nombre premier (module), g : générateur
+# ⚠️  p=967 est trop petit pour un usage réel.
+#     En production, utiliser un prime d'au moins 2048 bits.
+# ─────────────────────────────────────────────
 p = 967
 g = 248
 
+# ─────────────────────────────────────────────
+# S-Box AES (substitution non-linéaire)
+# Tableau de 256 entrées : SBOX[x] donne le substitut de l'octet x.
+# Utilisée dans SubBytes pour introduire de la confusion.
+# ─────────────────────────────────────────────
 SBOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -25,10 +51,21 @@ SBOX = [
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 ]
 
+# S-Box inverse : RSBOX[SBOX[x]] == x pour tout x dans [0, 255].
+# Construite automatiquement à partir de SBOX pour garantir la cohérence.
+# Utilisée dans InvSubBytes lors du déchiffrement.
 RSBOX = [0] * 256
 for i in range(256):
     RSBOX[SBOX[i]] = i
 
+# ─────────────────────────────────────────────
+# Matrices MixColumns
+# MATRICE_MIX     : multiplie chaque colonne du bloc (diffusion).
+# MATRICE_INV_MIX : inverse utilisée au déchiffrement.
+# ⚠️  np.linalg.pinv() donne une pseudo-inverse en virgule flottante.
+#     L'inverse exacte dans GF(2⁸) nécessiterait une arithmétique
+#     polynomiale modulo 0x11b — des erreurs d'arrondi peuvent survenir.
+# ─────────────────────────────────────────────
 MATRICE_MIX = np.array([
     [2, 3, 1, 1],
     [1, 2, 3, 1],
@@ -36,78 +73,274 @@ MATRICE_MIX = np.array([
     [3, 1, 1, 2]
 ], dtype=np.int32)
 
-MATRICE_INV_MIX = np.linalg.pinv(MATRICE_MIX)
+MATRICE_INV_MIX = np.linalg.pinv(MATRICE_MIX)  # ⚠️  Approximation flottante
+
+# [DEBUG] Vérifier que RSBOX est bien l'inverse de SBOX (doit afficher True)
+# print(f"[DEBUG crypto] RSBOX valide : {all(RSBOX[SBOX[i]] == i for i in range(256))}")
+
+# [DEBUG] Afficher les matrices clefs pour vérifier leur contenu au chargement
+# print(f"[DEBUG crypto] MATRICE_MIX :\n{MATRICE_MIX}")
+# print(f"[DEBUG crypto] MATRICE_INV_MIX :\n{np.round(MATRICE_INV_MIX, 4)}")
+
+
+# ─────────────────────────────────────────────
+# SubBytes / InvSubBytes
+# ─────────────────────────────────────────────
 
 def substituer_octets(matrice):
-    return np.array([SBOX[int(x) % 256] for x in matrice.flatten()], dtype=np.int32).reshape(4, 4)
+    """
+    SubBytes : remplace chaque octet de la matrice 4×4 par sa valeur dans SBOX.
+    Apporte de la confusion (relation non-linéaire entre clair et chiffré).
+    """
+    resultat = np.array([SBOX[int(x) % 256] for x in matrice.flatten()], dtype=np.int32).reshape(4, 4)
+    # [DEBUG] Afficher la matrice avant/après substitution
+    # print(f"[DEBUG SubBytes] entrée :\n{matrice}\n→ sortie :\n{resultat}")
+    return resultat
 
 def restaurer_octets(matrice):
-    return np.array([RSBOX[int(x) % 256] for x in matrice.flatten()], dtype=np.int32).reshape(4, 4)
+    """
+    InvSubBytes : opération inverse de substituer_octets, via RSBOX.
+    """
+    resultat = np.array([RSBOX[int(x) % 256] for x in matrice.flatten()], dtype=np.int32).reshape(4, 4)
+    # [DEBUG] Afficher la matrice avant/après substitution inverse
+    # print(f"[DEBUG InvSubBytes] entrée :\n{matrice}\n→ sortie :\n{resultat}")
+    return resultat
+
+
+# ─────────────────────────────────────────────
+# ShiftRows / InvShiftRows
+# ─────────────────────────────────────────────
 
 def diffuser_lignes(matrice):
+    """
+    ShiftRows : décale circulairement chaque ligne i de i positions vers la gauche.
+      - Ligne 0 : aucun décalage
+      - Ligne 1 : décalage de 1 vers la gauche
+      - Ligne 2 : décalage de 2 vers la gauche
+      - Ligne 3 : décalage de 3 vers la gauche
+    Apporte de la diffusion en mélangeant les octets entre les colonnes.
+    """
     m_copy = matrice.copy()
     for i in range(4):
         m_copy[i] = np.roll(m_copy[i], -i)
+    # [DEBUG] Afficher la matrice avant/après ShiftRows
+    # print(f"[DEBUG ShiftRows] entrée :\n{matrice}\n→ sortie :\n{m_copy}")
     return m_copy
 
 def rassembler_lignes(matrice):
+    """
+    InvShiftRows : décale circulairement chaque ligne i de i positions vers la droite.
+    Opération inverse de diffuser_lignes.
+    """
     m_copy = matrice.copy()
     for i in range(4):
         m_copy[i] = np.roll(m_copy[i], i)
+    # [DEBUG] Afficher la matrice avant/après InvShiftRows
+    # print(f"[DEBUG InvShiftRows] entrée :\n{matrice}\n→ sortie :\n{m_copy}")
     return m_copy
 
+
+# ─────────────────────────────────────────────
+# MixColumns / InvMixColumns
+# ─────────────────────────────────────────────
+
 def melanger_colonnes(matrice):
-    return (MATRICE_MIX @ matrice) % 256
-
-def demeler_colonnes(matrice):
-    res = MATRICE_INV_MIX @ matrice
-    return np.round(res).astype(np.int32) % 256
-
-def generer_clef():
-    return random.randint(1, p-1)
-
-def publique(privee):
-    return pow(g, privee, p)
-
-def commun(privee_locale, publique_distante):
-    return pow(publique_distante, privee_locale, p)
-
-
-
-def chiffrement(message, k1, k2, k3, k4):
-    iv = os.urandom(16)
-    iv_matrix = np.array(list(iv), dtype=np.int32).reshape(4, 4)
-    donnees = [ord(c) for c in message]
-    while len(donnees) % 16 != 0:
-        donnees.append(0)
-    
-    resultat = list(iv)
-    k_combinee = diffuser_lignes((k1 ^ diffuser_lignes(k2)) ^ (k3 ^ diffuser_lignes(k4)))
-    
-    for i in range(0, len(donnees), 16):
-        bloc = np.array(donnees[i:i+16], dtype=np.int32).reshape(4, 4)
-        bloc = substituer_octets(bloc)
-        bloc = diffuser_lignes(bloc)
-        bloc = melanger_colonnes(bloc)
-        chiffre = bloc ^ k_combinee ^ iv_matrix
-        resultat.extend(chiffre.flatten().tolist())
+    """
+    MixColumns : multiplie chaque colonne par MATRICE_MIX modulo 256.
+    Renforce la diffusion entre les octets d'une même colonne.
+    """
+    resultat = (MATRICE_MIX @ matrice) % 256
+    # [DEBUG] Afficher la matrice avant/après MixColumns
+    # print(f"[DEBUG MixColumns] entrée :\n{matrice}\n→ sortie :\n{resultat}")
     return resultat
 
+def demeler_colonnes(matrice):
+    """
+    InvMixColumns : applique MATRICE_INV_MIX puis arrondit au plus proche entier.
+    ⚠️  Approximation flottante — des erreurs d'arrondi peuvent corrompre
+        silencieusement certains blocs lors du déchiffrement.
+    """
+    res = MATRICE_INV_MIX @ matrice
+    resultat = np.round(res).astype(np.int32) % 256
+    # [DEBUG] Afficher les valeurs flottantes brutes pour détecter les erreurs d'arrondi
+    # print(f"[DEBUG InvMixColumns] valeurs flottantes brutes :\n{np.round(res, 3)}")
+    # print(f"[DEBUG InvMixColumns] après arrondi :\n{resultat}")
+    return resultat
+
+
+# ─────────────────────────────────────────────
+# Diffie-Hellman
+# ─────────────────────────────────────────────
+
+def generer_clef():
+    """
+    Génère une clef privée DH : entier aléatoire dans [1, p-1].
+    ⚠️  random.randint() est un PRNG non cryptographique.
+        Préférer secrets.randbelow(p - 1) + 1 en production.
+    """
+    clef = random.randint(1, p - 1)
+    # [DEBUG] Afficher la clef privée générée (NE PAS laisser actif en production !)
+    # print(f"[DEBUG DH] clef privée générée : {clef}")
+    return clef
+
+def publique(privee):
+    """
+    Calcule la clef publique DH : g^privee mod p.
+    Cette valeur est envoyée en clair à l'autre partie lors de l'échange initial.
+    """
+    pub = pow(g, privee, p)
+    # [DEBUG] Afficher la clef publique calculée
+    # print(f"[DEBUG DH] clef publique calculée : {pub}  (g={g}, privee={privee}, p={p})")
+    return pub
+
+def commun(privee_locale, publique_distante):
+    """
+    Calcule le secret partagé DH : publique_distante^privee_locale mod p.
+    Les deux parties obtiennent la même valeur sans s'échanger leurs clefs privées.
+    """
+    secret = pow(publique_distante, privee_locale, p)
+    # [DEBUG] Afficher le secret partagé calculé (NE PAS laisser actif en production !)
+    # print(f"[DEBUG DH] secret partagé calculé : {secret}")
+    return secret
+
+
+# ─────────────────────────────────────────────
+# Chiffrement / Déchiffrement
+# ─────────────────────────────────────────────
+
+def chiffrement(message, k1, k2, k3, k4):
+    """
+    Chiffre un message texte avec les quatre matrices-clefs issues de keygen.
+
+    Étapes appliquées à chaque bloc de 16 octets :
+      1. SubBytes       — substitution non-linéaire via SBOX
+      2. ShiftRows      — décalage des lignes pour la diffusion
+      3. MixColumns     — mélange des colonnes
+      4. XOR            — avec la clef combinée et l'IV
+
+    Un IV de 16 octets aléatoires est généré par message et préfixé
+    au résultat pour permettre le déchiffrement côté réception.
+
+    ⚠️  L'IV n'est pas mis à jour entre les blocs (CBC non chaîné) :
+        deux blocs clairs identiques produiront le même bloc chiffré.
+
+    Paramètres
+    ----------
+    message         : str          — texte clair à chiffrer
+    k1, k2, k3, k4 : np.ndarray   — matrices 4×4 issues de keygen.generer_matrices_clefs()
+
+    Retourne
+    --------
+    list[int] — [IV (16 octets)] + [blocs chiffrés aplatis]
+    """
+    # Génération d'un IV aléatoire de 16 octets (renouvelé à chaque appel)
+    iv = os.urandom(16)
+    iv_matrix = np.array(list(iv), dtype=np.int32).reshape(4, 4)
+
+    # [DEBUG] Afficher l'IV généré en hexadécimal
+    # print(f"[DEBUG chiffrement] IV généré : {iv.hex()}")
+
+    # Conversion du message en liste d'entiers ASCII
+    donnees = [ord(c) for c in message]
+
+    # [DEBUG] Afficher la longueur du message avant et après padding
+    # print(f"[DEBUG chiffrement] longueur message avant padding : {len(donnees)}")
+
+    # Padding nul pour aligner la longueur sur un multiple de 16
+    # ⚠️  Un padding nul est ambigu : les vrais '\x00' du message seront perdus
+    while len(donnees) % 16 != 0:
+        donnees.append(0)
+
+    # [DEBUG] Afficher la longueur après padding et le nombre de blocs
+    # print(f"[DEBUG chiffrement] longueur après padding : {len(donnees)} → {len(donnees) // 16} bloc(s)")
+
+    # Précalcul de la clef combinée (identique pour tous les blocs du message)
+    # Formule : ShiftRows( (k1 XOR ShiftRows(k2)) XOR (k3 XOR ShiftRows(k4)) )
+    k_combinee = diffuser_lignes((k1 ^ diffuser_lignes(k2)) ^ (k3 ^ diffuser_lignes(k4)))
+
+    # [DEBUG] Afficher la clef combinée utilisée pour le chiffrement
+    # print(f"[DEBUG chiffrement] clef combinée :\n{k_combinee}")
+
+    resultat = list(iv)  # L'IV est transmis en clair en tête du paquet
+
+    for i in range(0, len(donnees), 16):
+        bloc = np.array(donnees[i:i + 16], dtype=np.int32).reshape(4, 4)
+
+        # [DEBUG] Afficher chaque bloc clair avant transformation
+        # print(f"[DEBUG chiffrement] bloc {i // 16} clair :\n{bloc}")
+
+        bloc = substituer_octets(bloc)        # SubBytes
+        bloc = diffuser_lignes(bloc)          # ShiftRows
+        bloc = melanger_colonnes(bloc)        # MixColumns
+        chiffre = bloc ^ k_combinee ^ iv_matrix  # AddRoundKey + XOR IV
+
+        # [DEBUG] Afficher chaque bloc après chiffrement complet
+        # print(f"[DEBUG chiffrement] bloc {i // 16} chiffré :\n{chiffre}")
+
+        resultat.extend(chiffre.flatten().tolist())
+
+    # [DEBUG] Afficher la taille totale du paquet chiffré (IV + blocs)
+    # print(f"[DEBUG chiffrement] taille paquet final : {len(resultat)} octets")
+
+    return resultat
+
+
 def dechiffrement(liste_chiffree, k1, k2, k3, k4):
+    """
+    Déchiffre une liste d'octets produite par chiffrement().
+
+    Étapes appliquées à chaque bloc (ordre strictement inverse du chiffrement) :
+      1. XOR            — avec la clef combinée et l'IV
+      2. InvMixColumns  — inverse du mélange des colonnes
+      3. InvShiftRows   — inverse du décalage des lignes
+      4. InvSubBytes    — substitution inverse via RSBOX
+
+    Paramètres
+    ----------
+    liste_chiffree  : list[int]  — [IV (16 octets)] + [blocs chiffrés]
+    k1, k2, k3, k4 : np.ndarray — mêmes matrices-clefs que lors du chiffrement
+
+    Retourne
+    --------
+    str — message déchiffré (les octets nuls de padding sont ignorés)
+    """
+    # Extraction de l'IV (16 premiers octets) et du corps chiffré
     iv_part = liste_chiffree[:16]
     message_part = liste_chiffree[16:]
+
     iv_matrix = np.array(iv_part, dtype=np.int32).reshape(4, 4)
     donnees = np.array(message_part, dtype=np.int32)
+
+    # [DEBUG] Afficher l'IV extrait et la taille des données à déchiffrer
+    # print(f"[DEBUG dechiffrement] IV extrait : {bytes(iv_part).hex()}")
+    # print(f"[DEBUG dechiffrement] {len(message_part)} octets chiffrés → {len(message_part) // 16} bloc(s)")
+
+    # Recalcul de la clef combinée (même formule qu'au chiffrement)
     k_combinee = diffuser_lignes((k1 ^ diffuser_lignes(k2)) ^ (k3 ^ diffuser_lignes(k4)))
-    
+
+    # [DEBUG] Afficher la clef combinée recalculée (doit être identique à celle du chiffrement)
+    # print(f"[DEBUG dechiffrement] clef combinée recalculée :\n{k_combinee}")
+
     resultat_texte = ""
     for i in range(0, len(donnees), 16):
-        bloc = donnees[i:i+16].reshape(4, 4)
-        dechiffre = bloc ^ k_combinee ^ iv_matrix
-        dechiffre = demeler_colonnes(dechiffre)
-        dechiffre = rassembler_lignes(dechiffre)
-        dechiffre = restaurer_octets(dechiffre)
+        bloc = donnees[i:i + 16].reshape(4, 4)
+
+        # [DEBUG] Afficher chaque bloc chiffré avant transformation inverse
+        # print(f"[DEBUG dechiffrement] bloc {i // 16} chiffré :\n{bloc}")
+
+        dechiffre = bloc ^ k_combinee ^ iv_matrix  # Défaire AddRoundKey + XOR IV
+        dechiffre = demeler_colonnes(dechiffre)     # InvMixColumns
+        dechiffre = rassembler_lignes(dechiffre)    # InvShiftRows
+        dechiffre = restaurer_octets(dechiffre)     # InvSubBytes
+
+        # [DEBUG] Afficher chaque bloc après déchiffrement complet
+        # print(f"[DEBUG dechiffrement] bloc {i // 16} déchiffré :\n{dechiffre}")
+
         for val in dechiffre.flatten():
-            if val != 0:
+            if val != 0:  # Suppression du padding nul (⚠️  perd les vrais '\x00')
                 resultat_texte += chr(int(val))
+
+    # [DEBUG] Afficher le message reconstitué avant retour
+    # print(f"[DEBUG dechiffrement] message reconstitué : '{resultat_texte}'")
+
     return resultat_texte
