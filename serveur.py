@@ -1,5 +1,6 @@
 import socket
 from threading import Thread
+import time
 
 Host = "10.1.40.74"
 Port = 6390
@@ -9,11 +10,12 @@ def handle_client(client_socket):
     while True:
         try:
             msg = client_socket.recv(8192)
-            if not msg: break
-            # On renvoie le message à tous les AUTRES clients
-            for c in clients:
-                if c != client_socket:
-                    c.send(msg)
+            if msg:
+                for c in clients:
+                    if c != client_socket:
+                        c.send(msg)
+            else:
+                break
         except:
             break
     if client_socket in clients: clients.remove(client_socket)
@@ -30,10 +32,13 @@ while len(clients) < 2:
     client, addr = serveur.accept()
     clients.append(client)
     print(f"Client {len(clients)} connecté.")
-    Thread(target=handle_client, args=[client], daemon=True).start()
 
-# Le thread principal reste en vie pour maintenir le serveur
+print("Les deux clients sont connectés. Activation du relais...")
+for c in clients:
+    Thread(target=handle_client, args=[c], daemon=True).start()
+
 try:
-    while True: pass
+    while True:
+        time.sleep(1)
 except KeyboardInterrupt:
     serveur.close()

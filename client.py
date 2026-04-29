@@ -46,10 +46,13 @@ try:
     client.connect((Host, Port))
     ma_privee = crypto.generer_clef()
     ma_pub = crypto.publique(ma_privee)
+    
     client.send(str(ma_pub).encode())
+    
     data = client.recv(1024).decode()
     SECRET_DH = crypto.commun(ma_privee, int(data))
-except:
+except Exception as e:
+    print(f"Erreur : {e}")
     exit()
 
 Thread(target=receive, args=[client], daemon=True).start()

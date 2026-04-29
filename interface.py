@@ -4,7 +4,6 @@ import hmac
 import hashlib
 import crypto
 import numpy as np
-from tkinter import messagebox
 
 zone_chat = None
 mon_pseudo = "Anonyme"
@@ -28,32 +27,24 @@ def lancer_interface(client_socket, SECRET_DH):
     app.geometry("600x500")
     app.title("Alpachat - Sécurisé")
 
-    app.grid_columnconfigure(0, weight=1)
-    app.grid_rowconfigure(0, weight=1)
-
     dialog = customtkinter.CTkInputDialog(text="Entrez votre pseudo :", title="Connexion")
     input_pseudo = dialog.get_input()
     mon_pseudo = input_pseudo if input_pseudo else "Anonyme"
 
     zone_chat = customtkinter.CTkTextbox(app)
-    zone_chat.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-    afficher_message(f"--- Bienvenue {mon_pseudo} ! ---")
+    zone_chat.pack(padx=20, pady=20, fill="both", expand=True)
 
     def envoyer_message():
         texte = champ_saisie.get()
         if texte.strip() != "":
             message_complet = f"{mon_pseudo} : {texte}"
-            
             key1, key2 = crypto.generer_matrices_clefs(SECRET_DH)
             chiffre = crypto.chiffrement(message_complet, key1, key2)
             
-            # Correction : Conversion NumPy pour le HMAC
             chiffre_np = np.array(chiffre, dtype=np.int32)
-            secret_bytes = str(SECRET_DH).encode()
-            signature = hmac.new(secret_bytes, chiffre_np.tobytes(), hashlib.sha256).hexdigest()
+            signature = hmac.new(str(SECRET_DH).encode(), chiffre_np.tobytes(), hashlib.sha256).hexdigest()
             
             paquet = {"ch2": chiffre, "hmac": signature}
-            
             try:
                 client_socket.send(json.dumps(paquet).encode('utf-8'))
                 afficher_message(f"Moi : {texte}")
@@ -61,13 +52,8 @@ def lancer_interface(client_socket, SECRET_DH):
             except:
                 fermer_interface()
 
-    frame_bas = customtkinter.CTkFrame(app, fg_color="transparent")
-    frame_bas.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
-    champ_saisie = customtkinter.CTkEntry(frame_bas, placeholder_text="Votre message...")
-    champ_saisie.grid(row=0, column=0, padx=(0, 100), sticky="ew")
+    champ_saisie = customtkinter.CTkEntry(app, placeholder_text="Votre message...")
+    champ_saisie.pack(padx=20, pady=10, fill="x")
     champ_saisie.bind("<Return>", lambda event: envoyer_message())
     
-    bouton_envoyer = customtkinter.CTkButton(frame_bas, text="Envoyer", command=envoyer_message)
-    bouton_envoyer.grid(row=0, column=1)
-
     app.mainloop()
