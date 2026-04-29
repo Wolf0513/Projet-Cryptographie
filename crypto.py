@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import hashlib
+import os
 
 p = 967
 g = 248
@@ -14,32 +15,42 @@ def publique(privee):
 def commun(privee_locale, publique_distante):
     return pow(publique_distante, privee_locale, p)
 
-def generer_matrices_clefs(secret_commun):
-    hash_obj = hashlib.sha256(str(secret_commun).encode()).digest()
-    partie1 = list(hash_obj[:16])
-    partie2 = list(hash_obj[16:])
-    k1 = np.array(partie1, dtype=np.int32).reshape(4, 4)
-    k2 = np.array(partie2, dtype=np.int32).reshape(4, 4)
-    return k1, k2
 
-def chiffrement(message, k1, k2):
+
+def chiffrement(message, k1, k2, k3):
+    iv = os.urandom(16)
+    iv_matrix = np.array(list(iv), dtype=np.int32).reshape(4, 4)
+    
     donnees = [ord(c) for c in message]
     while len(donnees) % 16 != 0:
         donnees.append(0)
+    resultat = list(iv)
+    partie_a = k1 ^ np.left_shift(k2, 1)
+    partie_b = k3 ^ np.left_shift(k1, 2)
+    k_combinee = partie_a ^ partie_b
     
-    resultat = []
     for i in range(0, len(donnees), 16):
         bloc = np.array(donnees[i:i+16], dtype=np.int32).reshape(4, 4)
-        chiffre = bloc ^ k1 ^ k2
+        chiffre = bloc ^ k_combinee ^ iv_matrix
         resultat.extend(chiffre.flatten().tolist())
     return resultat
 
-def dechiffrement(liste_chiffree, k1, k2):
-    donnees = np.array(liste_chiffree, dtype=np.int32)
+def dechiffrement(liste_chiffree, k1, k2, k3):
+    iv_part = liste_chiffree[:16]
+    message_part = liste_chiffree[16:]
+    
+    iv_matrix = np.array(iv_part, dtype=np.int32).reshape(4, 4)
+    donnees = np.array(message_part, dtype=np.int32)
+    
+    # On reconstruit la même clé combinée
+    partie_a = k1 ^ np.left_shift(k2, 1)
+    partie_b = k3 ^ np.left_shift(k1, 2)
+    k_combinee = partie_a ^ partie_b
+    
     resultat_texte = ""
     for i in range(0, len(donnees), 16):
         bloc = donnees[i:i+16].reshape(4, 4)
-        dechiffre = bloc ^ k2 ^ k1
+        dechiffre = bloc ^ k_combinee ^ iv_matrix
         for val in dechiffre.flatten():
             if val != 0:
                 resultat_texte += chr(int(val))

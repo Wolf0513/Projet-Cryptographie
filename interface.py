@@ -3,6 +3,7 @@ import json
 import hmac
 import hashlib
 import crypto
+import keygen
 import numpy as np
 
 zone_chat = None
@@ -64,7 +65,7 @@ def lancer_interface(client_socket, SECRET_DH):
         if texte.strip() != "":
             message_complet = f"{mon_pseudo} : {texte}"
             
-            key1, key2 = crypto.generer_matrices_clefs(SECRET_DH)
+            key1, key2 = keygen.generer_matrices_clefs(SECRET_DH)
             chiffre = crypto.chiffrement(message_complet, key1, key2)
             
             chiffre_np = np.array(chiffre, dtype=np.int32)
