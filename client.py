@@ -31,8 +31,7 @@ import interface
 # ─────────────────────────────────────────────
 # Configuration réseau
 # ─────────────────────────────────────────────
-Host = "192.168.1.29"
-# Host = "10.1.40.74"
+Host = "10.1.40.74"
 Port = 6390
 
 # Secret DH partagé, calculé après l'échange initial.
