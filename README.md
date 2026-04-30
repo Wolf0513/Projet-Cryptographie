@@ -1,57 +1,163 @@
-# Projet-Cryptographie
+# Alpachat
 
-Alpachat - Messagerie sécurisée E2EE
+Application de messagerie chiffrée de bout en bout entre deux clients, développée en Python dans le cadre d'un projet de cryptographie.
 
-Alpachat est une application de chat en temps réel permettant à deux utilisateurs de communiquer de manière sécurisée via un serveur relais. Le projet met l'accent sur la confidentialité grâce à un chiffrement de bout en bout (End-to-End Encryption) personnalisé.
+---
 
-Fonctionnalités : 
-- Chiffrement E2EE : Les messages sont chiffrés sur le client émetteur et déchiffrés uniquement par le destinataire.
+## Présentation
 
-- Échange de clés Diffie-Hellman : Négociation d'un secret partagé sans transmission de clés privées sur le réseau.
+Alpachat permet à deux utilisateurs de communiquer via un serveur relais qui ne voit jamais le contenu des messages. Tout le chiffrement se passe côté client : le serveur ne fait que transmettre des paquets opaques.
 
-- Intégrité garantie : Utilisation de HMAC-SHA256 pour vérifier que les messages n'ont pas été altérés ou rejoués.
+L'application implémente from scratch :
+- un échange de clefs **Diffie-Hellman** pour établir un secret partagé sans jamais l'envoyer sur le réseau
+- un chiffrement par blocs **inspiré d'AES** (SubBytes, ShiftRows, MixColumns en GF(2⁸), XOR avec IV)
+- une vérification d'intégrité **HMAC-SHA256** sur chaque message
+- une interface graphique **CustomTkinter** avec affichage des pseudos style messagerie
 
-- Interface Graphique (GUI) : Interface moderne et sombre (Dark Mode) réalisée avec CustomTkinter.
+---
 
-- Serveur Relais : Un serveur TCP minimaliste qui assure le transit des paquets sans jamais avoir accès au contenu clair.
+## Architecture
 
-Architecture Cryptographie 
+```
+projet/
+├── serveur.py      # Serveur relais TCP (à lancer en premier)
+├── client.py       # Point d'entrée client (connexion + thread de réception)
+├── interface.py    # Interface graphique CustomTkinter
+├── crypto.py       # Primitives cryptographiques (DH, chiffrement, déchiffrement)
+└── keygen.py       # Dérivation des matrices-clefs depuis le secret DH
+```
 
-Le projet implémente sa propre couche de sécurité inspirée des standards industriels :Négociation :
-1. Échange de clés Diffie-Hellman (g=248, p=967) pour générer un SECRET_DH.
-2. Dérivation de clés : Double hachage SHA-256 du secret pour générer 4 matrices de clés 4*4.
-3. Algorithme de Chiffrement : Un cipher par blocs inspiré d'AES comprenant :
-    -SubBytes (S-Box non-linéaire)
-    -ShiftRows (Diffusion par décalage de lignes)
-    -MixColumns (Mélange algébrique dans GF(2**8))
-    -AddRoundKey (XOR avec clés dérivées et IV)
-4. Authentification : Signature HMAC systématique de chaque paquet chiffré.
+### Flux de démarrage
 
-Installation 
+```
+Serveur                     Client A                    Client B
+   |                            |                           |
+   |<--- connexion TCP ----------|                           |
+   |<--- connexion TCP ------------------------------------ |
+   |                            |                           |
+   |        clef publique DH    |                           |
+   |<---------------------------|                           |
+   |   clef publique DH         |                           |
+   |---------------------------------------------->        |
+   |                            |                           |
+   |        (idem sens inverse pour client B)               |
+   |                            |                           |
+   |              [ calcul secret partagé côté client ]     |
+   |                            |                           |
+   |         paquet JSON chiffré + HMAC                     |
+   |<---------------------------|                           |
+   |--------------------------------------------->         |
+   |                            |     [ déchiffrement ]     |
+```
 
-prérequis :
-- python 3.8
-- bibliothèque : "pip install customtkinter"
+---
 
-structure du projet : 
-    serveur.py : Gère la mise en relation des deux clients.
+## Cryptographie
 
-    client.py : Point d'entrée de l'application utilisateur.
+### Échange Diffie-Hellman
 
-    interface.py : Logique de l'interface graphique.
+À la connexion, chaque client génère une clef privée aléatoire et calcule sa clef publique `g^privee mod p`. Les deux clefs publiques sont échangées via le serveur relais. Chaque client calcule ensuite le secret partagé `publique_distante^privee_locale mod p` — les deux obtiennent la même valeur sans s'être échangé leurs clefs privées.
 
-    crypto.py : Primitives de chiffrement et primitives mathématiques.
+### Dérivation des clefs
 
-    keygen.py : Logique de dérivation des clés.
+Le secret DH est haché deux fois avec SHA-256 pour produire 64 octets indépendants, découpés en quatre matrices 4×4 (`k1`, `k2`, `k3`, `k4`) utilisées par le chiffrement.
 
-Utilisation : 
+### Chiffrement par blocs
 
-Pour démarrer une session de chat, suivez cet ordre :
-    Lancer le serveur : "python serveur.py"
-Le serveur attendra la connexion de deux clients.
+Le message est découpé en blocs de 16 octets. Sur chaque bloc :
 
-Lancer le premier client :
-    python client.py
-Lancer le second client :
-    python client.py
-Une fois les deux clients connectés, l'interface s'ouvre et l'échange sécurisé peut commencer.
+1. **SubBytes** — substitution non-linéaire via la S-Box AES
+2. **ShiftRows** — décalage circulaire des lignes
+3. **MixColumns** — multiplication matricielle dans GF(2⁸)
+4. **XOR** — avec la clef combinée et un IV aléatoire
+
+Un IV de 16 octets est généré aléatoirement à chaque message et préfixé au paquet chiffré.
+
+### Intégrité HMAC
+
+Chaque paquet chiffré est signé avec HMAC-SHA256, en utilisant le secret DH comme clef. Le destinataire recalcule le HMAC et le compare avant de déchiffrer — si les deux ne correspondent pas, la connexion est coupée immédiatement.
+
+### Format du paquet transmis
+
+```json
+{
+  "ch2": [<IV sur 16 octets>, <blocs chiffrés aplatis>],
+  "hmac": "<signature HMAC-SHA256 en hexadécimal>"
+}
+```
+
+---
+
+## Installation
+
+**Prérequis :** Python 3.10+
+
+Installer les dépendances :
+
+```bash
+pip install numpy customtkinter
+```
+
+---
+
+## Lancement
+
+### 1. Démarrer le serveur
+
+Sur la machine qui héberge le relais :
+
+```bash
+python serveur.py
+```
+
+Le serveur écoute sur le port `6390` et attend exactement 2 clients avant d'activer le relais.
+
+### 2. Configurer l'IP dans client.py
+
+Ouvrir `client.py` et renseigner l'IP de la machine qui fait tourner le serveur :
+
+```python
+Host = "10.1.40.74"  # ← remplacer par l'IP du serveur
+Port = 6390
+```
+
+Pour trouver l'IP du serveur sous Windows : `ipconfig` → adresse IPv4 de l'interface active.
+
+### 3. Lancer les deux clients
+
+Sur chaque machine (ou deux terminaux différents) :
+
+```bash
+python client.py
+```
+
+Une boîte de dialogue demande un pseudo au démarrage. Une fois les deux clients connectés, la conversation peut commencer.
+
+---
+
+## Limitations connues
+
+| Élément | Problème | Impact |
+|---|---|---|
+| `p = 967` (DH) | Prime trop petit, brutable en <1 ms | Sécurité nulle en dehors du contexte pédagogique |
+| CBC non chaîné | L'IV ne change pas entre les blocs d'un même message | Deux blocs clairs identiques → même bloc chiffré |
+| `random.randint()` | PRNG non cryptographique pour la clef privée DH | Clef potentiellement prédictible |
+| Thread-safety UI | `afficher_message()` appelé depuis un thread non-UI | Crashs aléatoires possibles sous charge |
+| Pas de reconnexion | Le serveur n'accepte que les 2 premières connexions | Un client déconnecté ne peut pas revenir |
+
+> Ce projet est un exercice pédagogique. Il ne doit pas être utilisé pour des communications réelles nécessitant de la confidentialité.
+
+---
+
+## Dépendances
+
+| Bibliothèque | Usage | Stdlib |
+|---|---|---|
+| `numpy` | Matrices pour les opérations cryptographiques | Non |
+| `customtkinter` | Interface graphique | Non |
+| `socket` | Communication TCP | Oui |
+| `hashlib` | SHA-256 pour HMAC et dérivation des clefs | Oui |
+| `hmac` | Vérification d'intégrité des messages | Oui |
+| `threading` | Thread de réception en parallèle de l'UI | Oui |
+| `os` | Génération de l'IV aléatoire (`os.urandom`) | Oui |
+| `json` | Sérialisation des paquets | Oui |
